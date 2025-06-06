@@ -1,26 +1,33 @@
 from os.path import isfile
-import streamlit as st, base64, pathlib
+import streamlit as st, base64, pathlib, os
 
 def create_pdf():
 
-    import os, tempfile, datetime, win32com.client  # pip install pywin32
+    import os, tempfile, datetime, win32com.client, pythoncom  # pip install pywin32
 
-    wdFormatPDF = 17                       # constant for PDF export
-    outfile = os.path.join(
-        tempfile.gettempdir(),
-        f"clipboard_{datetime.datetime.now():%Y%m%d_%H%M%S}.pdf"
-    )
+    # Initialize COM
+    pythoncom.CoInitialize()
+    
+    try:
+        wdFormatPDF = 17                       # constant for PDF export
+        outfile = os.path.join(
+            tempfile.gettempdir(),
+            f"clipboard_{datetime.datetime.now():%Y%m%d_%H%M%S}.pdf"
+        )
 
-    word = win32com.client.Dispatch("Word.Application")
-    word.Visible = False                   # keep UI hidden
-    doc   = word.Documents.Add()           # blank document
-    doc.Content.Paste()                    # paste *as Word sees it* (text + pictures)
-    doc.ExportAsFixedFormat(outfile, wdFormatPDF)  # same API Word’s UI uses
-    doc.Close(False)
-    word.Quit()
+        word = win32com.client.Dispatch("Word.Application")
+        word.Visible = False                   # keep UI hidden
+        doc   = word.Documents.Add()           # blank document
+        doc.Content.Paste()                    # paste *as Word sees it* (text + pictures)
+        doc.ExportAsFixedFormat(outfile, wdFormatPDF)  # same API Word's UI uses
+        doc.Close(False)
+        word.Quit()
 
-    print("Saved:", outfile)
-    return outfile
+        print("Saved:", outfile)
+        return outfile
+    finally:
+        # Clean up COM
+        pythoncom.CoUninitialize()
 
 
 def show_pdf(path: str | pathlib.Path):
@@ -65,11 +72,11 @@ keyboard_js = """
 document.addEventListener('keydown', function(event) {
     if (event.ctrlKey && event.key === 'v') {
         event.preventDefault();
-        // Trigger button click
-        const button = document.querySelector('button[data-testid="baseButton-secondary"]');
-        if (button && button.textContent.includes('Create PDF from Clipboard')) {
-            button.click();
-        }
+        
+        // Add query parameter and reload page
+        const url = new URL(window.location);
+        url.searchParams.set('ctrl_v', 'true');
+        window.location.href = url.toString();
     }
 });
 </script>
@@ -77,8 +84,18 @@ document.addEventListener('keydown', function(event) {
 
 st.markdown(keyboard_js, unsafe_allow_html=True)
 
+# Check if Ctrl+V was pressed (using query params)
+query_params = st.query_params
+ctrl_v_triggered = 'ctrl_v' in query_params and query_params['ctrl_v'] == 'true'
+
+if ctrl_v_triggered:
+    # Clear the query parameter to avoid retriggering
+    st.query_params.clear()
+
 # Button to create PDF from clipboard (also triggered by Ctrl+V)
-if st.button("📋 Create PDF from Clipboard (Ctrl+V)", key="create_pdf_btn"):
+create_pdf_clicked = st.button("📋 Create PDF from Clipboard (Ctrl+V)", key="create_pdf_btn")
+
+if create_pdf_clicked or ctrl_v_triggered:
     try:
         with st.spinner("Creating PDF from clipboard..."):
             pdf_path = create_pdf()
