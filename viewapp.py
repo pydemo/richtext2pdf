@@ -20,7 +20,22 @@ def create_pdf(prefix="clipboard", mode="new", existing_pdf_path=None):
             outfile = os.path.join(tempfile.gettempdir(), filename)
             
             doc = word.Documents.Add()           # blank document
-            doc.Content.Paste()                  # paste *as Word sees it* (text + pictures)
+            
+            # Check if clipboard has content
+            try:
+                doc.Content.Paste()                  # paste *as Word sees it* (text + pictures)
+                content_length = len(doc.Content.Text)
+                print(f"Content pasted, length: {content_length}")
+                
+                if content_length <= 1:  # Empty or just paragraph mark
+                    # Add some default text if clipboard is empty
+                    doc.Content.Text = "No content found in clipboard. This is a test PDF."
+                    
+            except Exception as paste_error:
+                print(f"Paste error: {paste_error}")
+                # Add default text if paste fails
+                doc.Content.Text = "Failed to paste clipboard content. This is a test PDF."
+            
             doc.ExportAsFixedFormat(outfile, wdFormatPDF)
             doc.Close(False)
             
@@ -123,9 +138,10 @@ def show_pdf(path: str | pathlib.Path):
     st.markdown("### PDF Preview")
     st.markdown(pdf_display, unsafe_allow_html=True)
     
-    # Method 3: Fallback - display as downloadable link
+    # Method 3: Show file location for manual access
     st.markdown("### Alternative Access")
-    st.markdown(f'<a href="data:application/pdf;base64,{b64}" target="_blank">🔗 Open PDF in new tab</a>', unsafe_allow_html=True)
+    st.text(f"PDF file location: {path}")
+    st.text("You can open this file directly in your file manager or PDF viewer")
 
 # Main application logic
 st.title("PDF Viewer")
@@ -167,7 +183,7 @@ with col1:
     # Text input for PDF filename prefix
     pdf_prefix = st.text_input(
         "PDF filename prefix:",
-        value="document",
+        value="NotebookLM",
         placeholder="Enter filename prefix",
         help="The PDF will be saved as: prefix_timestamp.pdf"
     )
@@ -219,7 +235,14 @@ if create_pdf_clicked or ctrl_v_triggered:
 
 # Display PDF if one exists
 if st.session_state.pdf_path and isfile(st.session_state.pdf_path):
-    show_pdf(st.session_state.pdf_path)
+    # Debug information
+    file_size = os.path.getsize(st.session_state.pdf_path)
+    st.info(f"📄 PDF loaded: {os.path.basename(st.session_state.pdf_path)} ({file_size:,} bytes)")
+    
+    if file_size > 0:
+        show_pdf(st.session_state.pdf_path)
+    else:
+        st.error("PDF file is empty. Please try creating the PDF again.")
 else:
     # Show empty PDF viewer
     st.markdown("### PDF Preview")
