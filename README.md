@@ -6,7 +6,6 @@ A Streamlit-based web application for creating and viewing PDFs from clipboard c
 
 - **📋 Clipboard to PDF**: Convert clipboard content (text, images, formatting) directly to PDF
 - **🖥️ Web Interface**: User-friendly Streamlit web application
-- **⌨️ Keyboard Shortcuts**: Press `Ctrl+V` anywhere in the app to create PDFs quickly
 - **📄 PDF Viewer**: Built-in PDF preview with download capability
 - **📝 Content Management**: Append or prepend new content to existing PDFs
 - **🎯 Custom Naming**: Set custom filename prefixes for organized file management
@@ -59,16 +58,10 @@ pypdf (or PyPDF2 as fallback)
 
 ### Creating PDFs
 
-#### Method 1: Button Interface
 1. Copy content to your clipboard (text, images, formatted content)
 2. Enter a filename prefix (optional, defaults to "NotebookLM")
 3. Click the "📋 Create PDF" button
 4. Your PDF will be created and displayed
-
-#### Method 2: Keyboard Shortcut
-1. Copy content to your clipboard
-2. Press `Ctrl+V` anywhere in the application
-3. PDF is automatically created and displayed
 
 ### Managing Existing PDFs
 
@@ -114,7 +107,6 @@ Displays PDF in the web interface with:
 
 ### Web Interface
 - Built with Streamlit framework
-- JavaScript integration for keyboard shortcuts
 - Session state management for PDF persistence
 - Responsive layout with column-based controls
 

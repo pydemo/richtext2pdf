@@ -2,7 +2,6 @@ from os.path import isfile
 import streamlit as st, base64, pathlib, os
 
 def create_pdf(prefix="clipboard", mode="new", existing_pdf_path=None):
-
     import os, tempfile, datetime, win32com.client, pythoncom  # pip install pywin32
 
     # Initialize COM
@@ -40,8 +39,10 @@ def create_pdf(prefix="clipboard", mode="new", existing_pdf_path=None):
             doc.Close(False)
             
         else:
-            # For append/prepend modes, merge PDFs
-            outfile = existing_pdf_path
+            # For append/prepend modes, create a new merged PDF with unique name
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"{prefix}_{mode}_{timestamp}.pdf"
+            outfile = os.path.join(tempfile.gettempdir(), filename)
             
             # Create temporary PDF with new clipboard content
             temp_timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -50,9 +51,24 @@ def create_pdf(prefix="clipboard", mode="new", existing_pdf_path=None):
             
             # Create new document with clipboard content
             doc = word.Documents.Add()
-            doc.Content.Paste()
+            try:
+                doc.Content.Paste()
+                content_length = len(doc.Content.Text)
+                print(f"New content pasted, length: {content_length}")
+                
+                if content_length <= 1:  # Empty or just paragraph mark
+                    doc.Content.Text = "No new content found in clipboard."
+                    
+            except Exception as paste_error:
+                print(f"Paste error: {paste_error}")
+                doc.Content.Text = "Failed to paste new clipboard content."
+            
             doc.ExportAsFixedFormat(temp_pdf_path, wdFormatPDF)
             doc.Close(False)
+            
+            # Verify temporary PDF was created
+            if not os.path.exists(temp_pdf_path) or os.path.getsize(temp_pdf_path) == 0:
+                raise Exception("Failed to create temporary PDF with new content")
             
             # Now merge the PDFs using pypdf
             try:
@@ -63,47 +79,75 @@ def create_pdf(prefix="clipboard", mode="new", existing_pdf_path=None):
                 except ImportError:
                     raise ImportError("Please install pypdf or PyPDF2: pip install pypdf")
             
+            # Validate existing PDF
+            if not os.path.exists(existing_pdf_path) or os.path.getsize(existing_pdf_path) == 0:
+                raise Exception("Existing PDF file is invalid or empty")
+            
             # Create merged PDF
             writer = PdfWriter()
             
-            if mode == "prepend":
-                # Add new content first, then existing content
-                new_reader = PdfReader(temp_pdf_path)
-                for page in new_reader.pages:
-                    writer.add_page(page)
-                
-                existing_reader = PdfReader(existing_pdf_path)
-                for page in existing_reader.pages:
-                    writer.add_page(page)
-            else:  # append
-                # Add existing content first, then new content
-                existing_reader = PdfReader(existing_pdf_path)
-                for page in existing_reader.pages:
-                    writer.add_page(page)
-                
-                new_reader = PdfReader(temp_pdf_path)
-                for page in new_reader.pages:
-                    writer.add_page(page)
-            
-            # Save merged PDF
-            with open(outfile, 'wb') as output_file:
-                writer.write(output_file)
-            
-            # Clean up temporary file
             try:
-                os.remove(temp_pdf_path)
-            except:
-                pass
+                if mode == "prepend":
+                    # Add new content first, then existing content
+                    print("Adding new content first (prepend mode)")
+                    new_reader = PdfReader(temp_pdf_path)
+                    for i, page in enumerate(new_reader.pages):
+                        writer.add_page(page)
+                        print(f"Added new page {i+1}")
+                    
+                    print("Adding existing content")
+                    existing_reader = PdfReader(existing_pdf_path)
+                    for i, page in enumerate(existing_reader.pages):
+                        writer.add_page(page)
+                        print(f"Added existing page {i+1}")
+                else:  # append
+                    # Add existing content first, then new content
+                    print("Adding existing content first (append mode)")
+                    existing_reader = PdfReader(existing_pdf_path)
+                    for i, page in enumerate(existing_reader.pages):
+                        writer.add_page(page)
+                        print(f"Added existing page {i+1}")
+                    
+                    print("Adding new content")
+                    new_reader = PdfReader(temp_pdf_path)
+                    for i, page in enumerate(new_reader.pages):
+                        writer.add_page(page)
+                        print(f"Added new page {i+1}")
+                
+                # Save merged PDF
+                with open(outfile, 'wb') as output_file:
+                    writer.write(output_file)
+                
+                # Verify merged PDF was created successfully
+                if not os.path.exists(outfile) or os.path.getsize(outfile) == 0:
+                    raise Exception("Failed to create merged PDF")
+                
+                print(f"Merged PDF created successfully: {outfile}")
+                
+            except Exception as merge_error:
+                print(f"PDF merge error: {merge_error}")
+                raise Exception(f"Failed to merge PDFs: {merge_error}")
+            
+            finally:
+                # Clean up temporary file
+                try:
+                    if os.path.exists(temp_pdf_path):
+                        os.remove(temp_pdf_path)
+                        print("Temporary PDF cleaned up")
+                except Exception as cleanup_error:
+                    print(f"Warning: Could not clean up temporary file: {cleanup_error}")
         
         word.Quit()
         print("Saved:", outfile)
         return outfile
+        
     except Exception as e:
         # Ensure Word is closed even if there's an error
         try:
             word.Quit()
         except:
             pass
+        print(f"Error in create_pdf: {e}")
         raise e
     finally:
         # Clean up COM
@@ -111,37 +155,179 @@ def create_pdf(prefix="clipboard", mode="new", existing_pdf_path=None):
 
 
 def show_pdf(path: str | pathlib.Path):
-    """Display PDF using streamlit's built-in capabilities"""
-    with open(path, "rb") as f:
-        pdf_bytes = f.read()
-    
-    # Extract filename from path
-    filename = os.path.basename(path)
-    
-    # Method 1: Download button (always works)
-    st.download_button(
-        label="📥 Download PDF",
-        data=pdf_bytes,
-        file_name=filename,
-        mime="application/pdf"
-    )
-    
-    # Method 2: Try to display with object tag (more compatible than iframe with data URLs)
-    b64 = base64.b64encode(pdf_bytes).decode()
-    pdf_display = f'''
-    <object data="data:application/pdf;base64,{b64}" type="application/pdf" width="100%" height="800px">
-        <p>Your browser does not support PDFs. 
-        <a href="data:application/pdf;base64,{b64}">Download the PDF</a> instead.</p>
-    </object>
-    '''
-    
-    st.markdown("### PDF Preview")
-    st.markdown(pdf_display, unsafe_allow_html=True)
-    
-    # Method 3: Show file location for manual access
-    st.markdown("### Alternative Access")
-    st.text(f"PDF file location: {path}")
-    st.text("You can open this file directly in your file manager or PDF viewer")
+    """Display PDF using streamlit's built-in capabilities with fallback options"""
+    try:
+        # Validate the PDF file
+        if not os.path.exists(path):
+            st.error(f"PDF file not found: {path}")
+            return
+        
+        file_size = os.path.getsize(path)
+        if file_size == 0:
+            st.error("PDF file is empty")
+            return
+        
+        with open(path, "rb") as f:
+            pdf_bytes = f.read()
+        
+        # Validate PDF content
+        if len(pdf_bytes) == 0:
+            st.error("PDF file contains no data")
+            return
+        
+        # Extract filename from path
+        filename = os.path.basename(path)
+        
+        # Method 1: Download button (always works)
+        st.download_button(
+            label="📥 Download PDF",
+            data=pdf_bytes,
+            file_name=filename,
+            mime="application/pdf",
+            key=f"download_{filename}"
+        )
+        
+        st.markdown("### PDF Preview")
+        
+        # Method 2: Use a simplified approach - just show the first few KB as text preview
+        # and provide links to open externally
+        try:
+            # Check if it's a valid PDF by looking at the header
+            pdf_header = pdf_bytes[:10]
+            if pdf_header.startswith(b'%PDF-'):
+                st.success("✅ Valid PDF file detected")
+                
+                # Try to extract text from first page for preview
+                try:
+                    from pypdf import PdfReader
+                    import io
+                    reader = PdfReader(io.BytesIO(pdf_bytes))
+                    if len(reader.pages) > 0:
+                        first_page_text = reader.pages[0].extract_text()
+                        if first_page_text.strip():
+                            st.markdown("**Text Content Preview (First Page):**")
+                            # Show first 500 characters
+                            preview_text = first_page_text[:500]
+                            if len(first_page_text) > 500:
+                                preview_text += "..."
+                            st.text(preview_text)
+                        else:
+                            st.info("PDF contains no extractable text (may be image-based)")
+                    else:
+                        st.warning("PDF appears to have no pages")
+                except Exception as text_error:
+                    st.warning(f"Could not extract text preview: {text_error}")
+                
+                # Create buttons to open PDF externally
+                st.markdown("**Open PDF:**")
+                col1, col2, col3 = st.columns(3)
+                
+                with col1:
+                    if st.button("📄 Open with Default", key="open_default"):
+                        try:
+                            # Use os.startfile to open with default application
+                            os.startfile(str(path))
+                            st.success("PDF opened with default application")
+                        except Exception as e:
+                            st.error(f"Could not open PDF: {e}")
+                
+                with col2:
+                    if st.button("🌐 Force Browser", key="open_browser"):
+                        try:
+                            import webbrowser
+                            import tempfile
+                            import shutil
+                            
+                            # Copy to a temp file with .pdf extension
+                            temp_dir = tempfile.gettempdir()
+                            temp_pdf = os.path.join(temp_dir, f"browser_{filename}")
+                            shutil.copy2(path, temp_pdf)
+                            
+                            # Try multiple browser approaches
+                            file_url = f"file:///{temp_pdf.replace(os.sep, '/').replace(' ', '%20')}"
+                            
+                            # Try Chrome first, then Edge, then default
+                            try:
+                                webbrowser.get('chrome').open(file_url)
+                                st.success("PDF opened in Chrome")
+                            except:
+                                try:
+                                    webbrowser.get('edge').open(file_url)
+                                    st.success("PDF opened in Edge")
+                                except:
+                                    webbrowser.open(file_url)
+                                    st.success("PDF opened in default browser")
+                                    
+                        except Exception as e:
+                            st.error(f"Could not open in browser: {e}")
+                
+                with col3:
+                    if st.button("📂 File Location", key="open_location"):
+                        try:
+                            import subprocess
+                            
+                            # Use different methods depending on OS
+                            if os.name == 'nt':  # Windows
+                                # Try explorer with /select parameter
+                                result = subprocess.run([
+                                    'explorer', '/select,', str(path)
+                                ], capture_output=True, text=True)
+                                
+                                if result.returncode == 0:
+                                    st.success("File location opened in Explorer")
+                                else:
+                                    # Fallback: just open the folder
+                                    folder_path = os.path.dirname(path)
+                                    os.startfile(folder_path)
+                                    st.success("Folder opened in Explorer")
+                            else:
+                                # For non-Windows systems
+                                folder_path = os.path.dirname(path)
+                                os.startfile(folder_path)
+                                st.success("Folder opened")
+                                
+                        except Exception as e:
+                            st.error(f"Could not open file location: {e}")
+                            # Show manual path as fallback
+                            st.code(f"Manual path: {os.path.dirname(path)}")
+                
+                # Show file path for manual access
+                st.markdown("**Manual Access:**")
+                st.code(str(path))
+                st.info("💡 You can copy the path above and paste it into your file explorer or PDF viewer")
+                
+            else:
+                st.error("File does not appear to be a valid PDF")
+                
+        except Exception as display_error:
+            st.error(f"Failed to process PDF: {display_error}")
+        
+        # Method 3: Show file information and location
+        st.markdown("### File Information")
+        st.text(f"File: {filename}")
+        st.text(f"Location: {path}")
+        st.text(f"Size: {file_size:,} bytes")
+        
+        # Try to extract basic PDF info
+        try:
+            from pypdf import PdfReader
+            reader = PdfReader(path)
+            st.text(f"Pages: {len(reader.pages)}")
+            if reader.metadata:
+                if '/Title' in reader.metadata:
+                    st.text(f"Title: {reader.metadata['/Title']}")
+                if '/Author' in reader.metadata:
+                    st.text(f"Author: {reader.metadata['/Author']}")
+        except Exception as info_error:
+            st.text(f"Could not extract PDF info: {info_error}")
+            
+    except Exception as e:
+        st.error(f"Error displaying PDF: {str(e)}")
+        st.text(f"File path: {path}")
+        if os.path.exists(path):
+            st.text(f"File exists but cannot be read")
+        else:
+            st.text(f"File does not exist")
 
 # Main application logic
 st.title("PDF Viewer")
