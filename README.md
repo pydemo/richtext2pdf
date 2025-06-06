@@ -25,3 +25,13 @@ Install dependencies:
 
 ```bash
 pip install streamlit weasyprint
+```
+On Linux, you may also need:
+```
+sudo apt install libpango-1.0-0 libgdk-pixbuf2.0-0 libffi-dev libcairo2
+```
+Run the App
+```
+streamlit run app.py
+```
+
