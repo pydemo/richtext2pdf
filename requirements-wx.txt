@@ -1,3 +1,0 @@
-wxpython>=4.1.0
-weasyprint>=60.0
-Pillow>=8.0.0

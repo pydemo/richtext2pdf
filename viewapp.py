@@ -237,29 +237,72 @@ def show_pdf(path: str | pathlib.Path):
                             import webbrowser
                             import tempfile
                             import shutil
+                            import urllib.parse
                             
-                            # Copy to a temp file with .pdf extension
+                            # Copy to a temp file with .pdf extension for browser access
                             temp_dir = tempfile.gettempdir()
-                            temp_pdf = os.path.join(temp_dir, f"browser_{filename}")
+                            safe_filename = filename.replace(' ', '_').replace('(', '').replace(')', '')
+                            temp_pdf = os.path.join(temp_dir, f"browser_{safe_filename}")
+                            
+                            # Copy the file
                             shutil.copy2(path, temp_pdf)
+                            st.info(f"Copied PDF to: {temp_pdf}")
                             
-                            # Try multiple browser approaches
-                            file_url = f"file:///{temp_pdf.replace(os.sep, '/').replace(' ', '%20')}"
+                            # Create proper file URL
+                            temp_pdf_escaped = temp_pdf.replace('\\', '/')
+                            file_url = f"file:///{temp_pdf_escaped}"
                             
-                            # Try Chrome first, then Edge, then default
+                            # Make the URL clickable in new tab
+                            st.markdown(f"**Opening URL:** <a href='{file_url}' target='_blank'>Click here to open PDF</a>", unsafe_allow_html=True)
+                            st.code(file_url)
+                            
+                            # Try to open in browser
+                            opened = False
+                            
+                            # Method 1: Try default browser first
                             try:
-                                webbrowser.get('chrome').open(file_url)
-                                st.success("PDF opened in Chrome")
-                            except:
+                                webbrowser.open(file_url, new=2)  # new=2 opens in new tab
+                                st.success("PDF opened in default browser")
+                                opened = True
+                            except Exception as e1:
+                                st.warning(f"Default browser failed: {e1}")
+                            
+                            # Method 2: Try Chrome specifically
+                            if not opened:
                                 try:
-                                    webbrowser.get('edge').open(file_url)
+                                    chrome = webbrowser.get('chrome')
+                                    chrome.open(file_url, new=2)
+                                    st.success("PDF opened in Chrome")
+                                    opened = True
+                                except Exception as e2:
+                                    st.warning(f"Chrome failed: {e2}")
+                            
+                            # Method 3: Try Edge specifically  
+                            if not opened:
+                                try:
+                                    edge = webbrowser.get('edge')
+                                    edge.open(file_url, new=2)
                                     st.success("PDF opened in Edge")
-                                except:
-                                    webbrowser.open(file_url)
-                                    st.success("PDF opened in default browser")
+                                    opened = True
+                                except Exception as e3:
+                                    st.warning(f"Edge failed: {e3}")
+                            
+                            # Method 4: Try system default
+                            if not opened:
+                                try:
+                                    os.startfile(temp_pdf)
+                                    st.success("PDF opened with system default")
+                                    opened = True
+                                except Exception as e4:
+                                    st.warning(f"System default failed: {e4}")
+                            
+                            if not opened:
+                                st.error("Could not open PDF in any browser")
+                                st.code(f"Manual file path: {temp_pdf}")
                                     
                         except Exception as e:
-                            st.error(f"Could not open in browser: {e}")
+                            st.error(f"Error in browser opening: {str(e)}")
+                            st.code(f"Original file path: {str(path)}")
                 
                 with col3:
                     if st.button("📂 File Location", key="open_location"):
@@ -268,28 +311,36 @@ def show_pdf(path: str | pathlib.Path):
                             
                             # Use different methods depending on OS
                             if os.name == 'nt':  # Windows
-                                # Try explorer with /select parameter
-                                result = subprocess.run([
-                                    'explorer', '/select,', str(path)
-                                ], capture_output=True, text=True)
-                                
-                                if result.returncode == 0:
+                                # Simplified approach - use only one method to avoid multiple windows
+                                try:
+                                    # Method 1: Try subprocess with full explorer path
+                                    explorer_path = os.path.join(os.environ.get('WINDIR', 'C:\\Windows'), 'explorer.exe')
+                                    subprocess.run([explorer_path, '/select,', str(path)], check=True)
                                     st.success("File location opened in Explorer")
-                                else:
-                                    # Fallback: just open the folder
-                                    folder_path = os.path.dirname(path)
-                                    os.startfile(folder_path)
-                                    st.success("Folder opened in Explorer")
+                                except (subprocess.CalledProcessError, FileNotFoundError):
+                                    try:
+                                        # Method 2: Fallback to os.startfile for folder only
+                                        folder_path = os.path.dirname(path)
+                                        os.startfile(folder_path)
+                                        st.success("Folder opened in Explorer")
+                                    except Exception:
+                                        # Method 3: Show manual path as last resort
+                                        st.warning("Could not open file location automatically")
+                                        st.code(f"Manual path: {str(path)}")
+                                        
                             else:
                                 # For non-Windows systems
-                                folder_path = os.path.dirname(path)
-                                os.startfile(folder_path)
-                                st.success("Folder opened")
+                                try:
+                                    folder_path = os.path.dirname(path)
+                                    os.startfile(folder_path)
+                                    st.success("Folder opened")
+                                except Exception as e:
+                                    st.error(f"Could not open folder: {e}")
+                                    st.code(f"Manual path: {str(path)}")
                                 
                         except Exception as e:
                             st.error(f"Could not open file location: {e}")
-                            # Show manual path as fallback
-                            st.code(f"Manual path: {os.path.dirname(path)}")
+                            st.code(f"Manual path: {str(path)}")
                 
                 # Show file path for manual access
                 st.markdown("**Manual Access:**")
